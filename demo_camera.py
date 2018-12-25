@@ -311,7 +311,7 @@ if __name__ == '__main__':
     params, model_params = config_reader()
 
     # Video reader
-    #cam = cv2.VideoCapture(video_file)
+    #cam = cv2.VideoCapture(input_video)
     cam = cv2.VideoCapture(0)
     #CV_CAP_PROP_FPS
     #cam.set(cv2.CAP_PROP_FPS, 10)

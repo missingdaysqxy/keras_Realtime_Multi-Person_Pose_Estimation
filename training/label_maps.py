@@ -37,9 +37,9 @@ def create_paf(num_maps, height, width, all_joints, threshold, stride):
     """
     Creates stacked paf maps for all connections. One connection requires
     2 maps because of paf vectors along dx and dy axis. For coco we have
-    19 connections -> x2 it gives 38 maps
+    17 connections -> x2 it gives 34 maps
 
-    :param num_maps: number of maps. for coco dataset we have 19 connections
+    :param num_maps: number of maps. for coco dataset we have 17 connections
     :param height: height dimension of the network output
     :param width: width dimension of the network output
     :param all_joints: list of all joints (for coco: 18 items)

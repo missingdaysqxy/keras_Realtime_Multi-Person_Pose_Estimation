@@ -5,55 +5,51 @@ import cv2
 import math
 import time
 import numpy as np
-import util
+from util import padRightDownCorner, processBar
 from config_reader import config_reader
 from scipy.ndimage.filters import gaussian_filter
 
+os.environ['CUDA_VISIBLE_DEVICES'] = '0'
 sys.path.append(os.path.join(os.path.dirname(__file__), ".."))
 
 from model.cmu_model import get_testing_model
 
-currentDT = time.localtime()
-start_datetime = time.strftime("-%m-%d-%H-%M-%S", currentDT)
+# find connection in the specified sequence
+limbSeq = [[3, 2], [2, 0], [2, 1], [3, 4], [3, 5], \
+           [3, 6], [6, 7], [7, 8], [8, 9], [9, 10], [10, 11], \
+           [3, 12], [12, 13], [13, 14], [14, 15], [15, 16], [16, 17]]
 
-# find connection in the specified sequence, center 29 is in the position 15
-limbSeq = [[2, 3], [2, 6], [3, 4], [4, 5], [6, 7], [7, 8], [2, 9], [9, 10], \
-           [10, 11], [2, 12], [12, 13], [13, 14], [2, 1], [1, 15], [15, 17], \
-           [1, 16], [16, 18], [3, 17], [6, 18]]
-
-# the middle joints heatmap correpondence
-mapIdx = [[31, 32], [39, 40], [33, 34], [35, 36], [41, 42], [43, 44], [19, 20], [21, 22], \
-          [23, 24], [25, 26], [27, 28], [29, 30], [47, 48], [49, 50], [53, 54], [51, 52], \
-          [55, 56], [37, 38], [45, 46]]
+# the sort order of mapIdx encodes the map from joint_pairs in training into limbSeq above
+mapIdx = [[0, 1], [2, 3], [4, 5], [6, 7], [8, 9], \
+          [10, 11], [12, 13], [14, 15], [16, 17], [18, 19], [20, 21], \
+          [22, 23], [24, 25], [26, 27], [28, 29], [30, 31], [32, 33]]
 
 # visualize
-colors = [[255, 0, 0], [255, 85, 0], [255, 170, 0], [255, 255, 0], [170, 255, 0], [85, 255, 0],
-          [0, 255, 0], \
-          [0, 255, 85], [0, 255, 170], [0, 255, 255], [0, 170, 255], [0, 85, 255], [0, 0, 255],
-          [85, 0, 255], \
-          [170, 0, 255], [255, 0, 255], [255, 0, 170], [255, 0, 85]]
+colors = [[255, 0, 0], [255, 85, 0], [255, 170, 0], [255, 255, 0], [170, 255, 0], [85, 255, 0], \
+          [0, 255, 0], [0, 255, 85], [0, 255, 170], [0, 255, 255], [0, 170, 255], [0, 85, 255], \
+          [0, 0, 255], [85, 0, 255], [170, 0, 255], [255, 0, 255], [255, 0, 170], [255, 0, 85]]
 
 
-def process (input_image, params, model_params):
-
+def process(input_image, params, model_params):
     oriImg = cv2.cvtColor(input_image, cv2.COLOR_RGB2BGR)
 
-    scale_search = [1, .5, 1.5, 2] # [.5, 1, 1.5, 2]
+    scale_search = params['scale_search']  # [1, 0.5, 1.5, 2]
     scale_search = scale_search[0:process_speed]
 
     multiplier = [x * model_params['boxsize'] / oriImg.shape[0] for x in scale_search]
 
-    heatmap_avg = np.zeros((oriImg.shape[0], oriImg.shape[1], 19))
-    paf_avg = np.zeros((oriImg.shape[0], oriImg.shape[1], 38))
+    heatmap_avg = np.zeros((oriImg.shape[0], oriImg.shape[1], num_joints_and_bkg))
+    paf_avg = np.zeros((oriImg.shape[0], oriImg.shape[1], num_paf))
 
     for m in range(len(multiplier)):
         scale = multiplier[m]
 
         imageToTest = cv2.resize(oriImg, (0, 0), fx=scale, fy=scale, interpolation=cv2.INTER_CUBIC)
-        imageToTest_padded, pad = util.padRightDownCorner(imageToTest, model_params['stride'],
-                                                          model_params['padValue'])
+        imageToTest_padded, pad = padRightDownCorner(imageToTest, model_params['stride'],
+                                                     model_params['padValue'])
 
-        input_img = np.transpose(np.float32(imageToTest_padded[:,:,:,np.newaxis]), (3,0,1,2)) # required shape (1, width, height, channels)
+        input_img = np.transpose(np.float32(imageToTest_padded[:, :, :, np.newaxis]),
+                                 (3, 0, 1, 2))  # required shape (1, width, height, channels)
 
         output_blobs = model.predict(input_img)
 
@@ -77,7 +73,7 @@ def process (input_image, params, model_params):
     all_peaks = []
     peak_counter = 0
 
-    for part in range(18):
+    for part in range(num_joints):
         map_ori = heatmap_avg[:, :, part]
         map = gaussian_filter(map_ori, sigma=3)
 
@@ -104,13 +100,12 @@ def process (input_image, params, model_params):
     special_k = []
     mid_num = 10
 
-    for k in range(len(mapIdx)):
-        score_mid = paf_avg[:, :, [x - 19 for x in mapIdx[k]]]
-        candA = all_peaks[limbSeq[k][0] - 1]
-        candB = all_peaks[limbSeq[k][1] - 1]
+    for k in range(num_connections):
+        score_mid = paf_avg[:, :, [x for x in mapIdx[k]]]
+        candA = all_peaks[limbSeq[k][0]]
+        candB = all_peaks[limbSeq[k][1]]
         nA = len(candA)
         nB = len(candB)
-        indexA, indexB = limbSeq[k]
         if (nA != 0 and nB != 0):
             connection_candidate = []
             for i in range(nA):
@@ -123,7 +118,7 @@ def process (input_image, params, model_params):
                     vec = np.divide(vec, norm)
 
                     startend = list(zip(np.linspace(candA[i][0], candB[j][0], num=mid_num), \
-                                   np.linspace(candA[i][1], candB[j][1], num=mid_num)))
+                                        np.linspace(candA[i][1], candB[j][1], num=mid_num)))
 
                     vec_x = np.array(
                         [score_mid[int(round(startend[I][1])), int(round(startend[I][0])), 0] \
@@ -158,14 +153,14 @@ def process (input_image, params, model_params):
 
     # last number in each row is the total parts number of that person
     # the second last number in each row is the score of the overall configuration
-    subset = -1 * np.ones((0, 20))
+    subset = -1 * np.ones((0, num_joints + 2))
     candidate = np.array([item for sublist in all_peaks for item in sublist])
 
-    for k in range(len(mapIdx)):
+    for k in range(num_connections):
         if k not in special_k:
             partAs = connection_all[k][:, 0]
             partBs = connection_all[k][:, 1]
-            indexA, indexB = np.array(limbSeq[k]) - 1
+            indexA, indexB = limbSeq[k]
 
             for i in range(len(connection_all[k])):  # = 1:size(temp,1)
                 found = 0
@@ -205,7 +200,7 @@ def process (input_image, params, model_params):
                     subset = np.vstack([subset, row])
 
     # delete some rows of subset which has few parts occur
-    deleteIdx = [];
+    deleteIdx = []
     for i in range(len(subset)):
         if subset[i][-1] < 4 or subset[i][-2] / subset[i][-1] < 0.4:
             deleteIdx.append(i)
@@ -213,15 +208,15 @@ def process (input_image, params, model_params):
 
     canvas = input_image
 
-    for i in range(18):
+    for i in range(num_joints):
         for j in range(len(all_peaks[i])):
             cv2.circle(canvas, all_peaks[i][j][0:2], 4, colors[i], thickness=-1)
 
     stickwidth = 4
 
-    for i in range(17):
+    for i in range(num_connections):
         for n in range(len(subset)):
-            index = subset[n][np.array(limbSeq[i]) - 1]
+            index = subset[n][limbSeq[i]]
             if -1 in index:
                 continue
             cur_canvas = canvas.copy()
@@ -241,67 +236,106 @@ def process (input_image, params, model_params):
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
-    parser.add_argument('--video', type=str, required=True, help='input video file name')
-    parser.add_argument('--model', type=str, default='model/keras/model.h5', help='path to the weights file')
-    parser.add_argument('--frame_ratio', type=int, default=1, help='analyze every [n] frames')
-    parser.add_argument('--process_speed', type=int, default=4, help='Int 1 (fastest, lowest quality) to 4 (slowest, highest quality)')
-    parser.add_argument('--end', type=int, default=None, help='Last video frame to analyze')
-
+    parser.add_argument('video', type=str, help='input video file name')
+    parser.add_argument('-m', '--model', type=str, default='model/keras/mymodel.h5',
+                        help='path to the weights file')
+    parser.add_argument('-f', '--frame_ratio', type=int, default=1, help='analyze every [n] frames')
+    parser.add_argument('-p', '--process_speed', type=int, default=2,
+                        help='Int 1 (fastest, lowest quality) to 4 (slowest, highest quality)')
+    parser.add_argument('-e', '--end', type=int, default=None, help='Last video frame to analyze')
+    parser.add_argument('-s', '--show', action='store_true', help='show video canvas')
     args = parser.parse_args()
 
     keras_weights_file = args.model
     frame_rate_ratio = args.frame_ratio
     process_speed = args.process_speed
-    ending_frame = args.end
 
     print('start processing...')
 
-    # Video input
+    # Video input & output
     video = args.video
-    video_path = 'videos/'
-    video_file = video_path + video
-
-    # Output location
-    output_path = 'videos/outputs/'
+    if not os.path.exists(video):
+        video = os.path.join('videos/', video)
+        if not os.path.exists(video):
+            raise FileNotFoundError("File not exist in neither {} and {}".format(args.video, video))
+    video_files = {"input": [], "output": []}
+    output_dir = 'videos/output'
     output_format = '.mp4'
-    video_output = output_path + video + str(start_datetime) + output_format
+    start_datetime = time.strftime("-%m%d%H%M%S", time.localtime())
+    if os.path.isdir(video):
+        for root, dirs, files in os.walk(video):
+            rel_path = os.path.relpath(root, video)
+            for file in files:
+                name, ext = os.path.splitext(file)
+                if ext in ['.mp4', '.avi', '.mpg', '.mpeg', '.3gp']:
+                    input_path = os.path.join(root, file)
+                    output_path = os.path.join(output_dir + start_datetime, rel_path, name + output_format)
+                    os.makedirs(os.path.dirname(output_path), exist_ok=True)
+                    video_files["input"].append(input_path)
+                    video_files["output"].append(output_path)
+    else:
+        name, ext = os.path.splitext(video)
+        assert ext in ['.mp4', '.avi', '.mpg', '.mpeg', '.3gp']
+        output_path = os.path.join(output_dir, os.path.basename(name) + start_datetime + output_format)
+        os.makedirs(os.path.dirname(output_path), exist_ok=True)
+        video_files["input"].append(video)
+        video_files["output"].append(output_path)
 
     # load model
-    # authors of original model don't use
-    # vgg normalization (subtracting mean) on input images
+    print('[*]Loading model...')
     model = get_testing_model()
     model.load_weights(keras_weights_file)
 
     # load config
+    print('[*]Loading config...')
     params, model_params = config_reader()
+    scale_search = params['scale_search']  # [0.5, 1, 1.5, 2]
+    scale_search = scale_search[0:process_speed]
+    num_joints = len(model_params['part_str'])  # 18
+    num_joints_and_bkg = num_joints + 1  # 19
+    num_connections = len(model_params['joint_pairs'])  # 17
+    num_paf = 2 * num_connections  # 34
+
+    assert num_connections == len(limbSeq) and num_connections == len(mapIdx)
 
     # Video reader
-    cam = cv2.VideoCapture(video_file)
-    input_fps = cam.get(cv2.CAP_PROP_FPS)
-    ret_val, input_image = cam.read()
-    video_length = int(cam.get(cv2.CAP_PROP_FRAME_COUNT))
-
-    if ending_frame == None:
-        ending_frame = video_length
-
-    # Video writer
-    output_fps = input_fps / frame_rate_ratio
-    fourcc = cv2.VideoWriter_fourcc(*'mp4v')
-    out = cv2.VideoWriter(video_output,fourcc, output_fps, (input_image.shape[1], input_image.shape[0]))
-
-    i = 0 # default is 0
-    while(cam.isOpened()) and ret_val == True and i < ending_frame:
-        if i%frame_rate_ratio == 0:
-
-            tic = time.time()
-
-            # generate image with body parts
-            canvas = process(input_image, params, model_params)
-
-            print('Processing frame: ', i)
-            toc = time.time()
-            print ('processing time is %.5f' % (toc - tic))
-
-            out.write(canvas)
+    for input_video, output_video in zip(video_files["input"], video_files["output"]):
+        print('[*]Process video {} into {}'.format(input_video, output_video))
+        cam = cv2.VideoCapture(input_video)
+        input_fps = cam.get(cv2.CAP_PROP_FPS)
         ret_val, input_image = cam.read()
-        i += 1
+        if not ret_val:
+            continue
+        video_length = int(cam.get(cv2.CAP_PROP_FRAME_COUNT))
+
+        ending_frame = args.end
+        if ending_frame == None:
+            ending_frame = video_length
+
+        # Video writer
+        output_fps = input_fps / frame_rate_ratio
+        fourcc = cv2.VideoWriter_fourcc(*'mp4v')
+        out = cv2.VideoWriter(output_video, fourcc, output_fps, (input_image.shape[1], input_image.shape[0]))
+
+        i = 0  # default is 0
+        tst = time.time()
+        while (cam.isOpened()) and ret_val == True and i < ending_frame:
+            if i % frame_rate_ratio == 0:
+                tic = time.time()
+                # generate image with body parts
+                canvas = process(input_image, params, model_params)
+                if args.show:
+                    cv2.imshow('preview', canvas)
+                    cv2.waitKey(1)
+                toc = time.time()
+                processBar(i, ending_frame,
+                           '{}/{}, process time:{:.3f}, total time:{:d}'.format(i, ending_frame, (toc - tic),
+                                                                                (toc - tst)), length=20)
+                out.write(canvas)
+            ret_val, input_image = cam.read()
+            i += 1
+        out.release()
+        cv2.destroyAllWindows()
+        processBar(ending_frame, ending_frame,
+                   '{}/{}, total time:{:.3f}'.format(i, ending_frame, (time.time() - tst)),
+                   length=20)

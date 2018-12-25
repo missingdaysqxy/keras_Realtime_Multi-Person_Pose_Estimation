@@ -7,38 +7,29 @@ from tensorpack.dataflow.base import RNGDataFlow
 
 
 class JointsLoader:
+    # Todo: change these for user data format
     """
     Loader for joints from coco keypoints
     """
-    @staticmethod
-    def _get_neck(coco_parts, idx1, idx2):
 
-        p1 = coco_parts[idx1]
-        p2 = coco_parts[idx2]
-        if p1 and p2:
-            return (p1[0] + p2[0]) / 2, (p1[1] + p2[1]) / 2
-        else:
-            return None
+    idx_in_coco_str = ['left_eye', 'right_eye', 'nose', 'neck', 'left_chest', 'right_chest', \
+                       'left_shoulder', 'left_upperarm', 'left_elbow', 'left_forearm', 'left_wrist', 'left_hand', \
+                       'right_shoulder', 'right_upperarm', 'right_elbow', 'right_forearm', 'right_wrist', 'right_hand']
 
-    num_joints = 18
+    num_joints = len(idx_in_coco_str)  # 18
 
-    num_joints_and_bkg = num_joints + 1
+    num_joints_and_bkg = num_joints + 1  # 19
 
-    num_connections = 19
+    idx_in_coco = list(range(num_joints))  # [0:17]
 
-    idx_in_coco = [0, lambda x: JointsLoader._get_neck(x, 5, 6), 6, 8,
-                   10, 5, 7, 9, 12, 14, 16, 11, 13, 15, 2, 1, 4, 3]
+    joint_pairs = [[3, 2], [2, 0], [2, 1], [3, 4], [3, 5], \
+                   [3, 6], [6, 7], [7, 8], [8, 9], [9, 10], [10, 11], \
+                   [3, 12], [12, 13], [13, 14], [14, 15], [15, 16], [16, 17]]
 
-    idx_in_coco_str = [
-        'Nose','Neck','RShoulder','RElbow','RWrist','LShoulder','LElbow','LWrist',
-        'RHip','RKnee','RAnkle','LHip','LKnee','LAnkle','REye','LEye','REar','LEar']
-
-    joint_pairs = list(zip(
-        [1, 8, 9, 1, 11, 12, 1, 2, 3, 2, 1, 5, 6, 5, 1, 0, 0, 14, 15],
-        [8, 9, 10, 11, 12, 13, 2, 3, 4, 16, 5, 6, 7, 17, 0, 14, 15, 16, 17]))
+    num_connections = len(joint_pairs)  # 17
 
     @staticmethod
-    def from_coco_keypoints(all_keypoints, w ,h):
+    def from_coco_keypoints(all_keypoints, w, h):
         """
         Creates list of joints based on the list of coco keypoints vectors.
 
@@ -59,7 +50,7 @@ class JointsLoader:
             keypoints_list = []
             for idx, (x, y, v) in enumerate(zip(xs, ys, vs)):
                 # only visible and occluded keypoints are used
-                if v >= 1 and x >=0 and y >= 0 and x < w and y < h:
+                if v >= 1 and x >= 0 and y >= 0 and x < w and y < h:
                     keypoints_list.append((x, y))
                 else:
                     keypoints_list.append(None)
@@ -106,7 +97,6 @@ class Meta(object):
 
     def __init__(self, img_path, height, width, center, bbox,
                  area, scale, num_keypoints):
-
         self.img_path = img_path
         self.height = height
         self.width = width
@@ -131,6 +121,7 @@ class COCODataPaths:
     """
     Holder for coco dataset paths
     """
+
     def __init__(self, annot_path, img_dir):
         self.annot = COCO(annot_path)
         self.img_dir = img_dir
@@ -140,6 +131,7 @@ class CocoDataFlow(RNGDataFlow):
     """
     Tensorpack dataflow serving coco data points.
     """
+
     def __init__(self, target_size, coco_data, select_ids=None):
         """
         Initializes dataflow.
@@ -217,7 +209,7 @@ class CocoDataFlow(RNGDataFlow):
                         a = np.expand_dims(pc[:2], axis=0)
                         b = np.expand_dims(person_center, axis=0)
                         dist = cdist(a, b)[0]
-                        if dist < pc[2]*0.3:
+                        if dist < pc[2] * 0.3:
                             too_close = True
                             break
 

@@ -1,3 +1,4 @@
+from datetime import datetime
 import math
 import os
 import re
@@ -9,26 +10,30 @@ import keras.backend as K
 from keras.applications.vgg19 import VGG19
 from keras.callbacks import LearningRateScheduler, ModelCheckpoint, CSVLogger, TensorBoard
 from keras.layers.convolutional import Conv2D
+from keras.utils import multi_gpu_model
 
 sys.path.append(os.path.join(os.path.dirname(__file__), ".."))
-
-from model.cmu_model import get_training_model
-from training.optimizers import MultiSGD
-from training.dataset import get_dataflow, batch_dataflow
 from training.dataflow import COCODataPaths
+from training.dataset import get_dataflow, batch_dataflow
+from training.optimizers import MultiSGD
+from model.cmu_model import get_training_model, ParallelModelCheckpoint
 
 
+os.environ['CUDA_VISIBLE_DEVICES'] = '0,1,2'
+
+gpu_count = 1
 batch_size = 10
-base_lr = 4e-5 # 2e-5
+base_lr = 4e-5  # 2e-5
 momentum = 0.9
 weight_decay = 5e-4
-lr_policy =  "step"
+lr_policy = "step"
 gamma = 0.333
-stepsize = 136106 #68053   // after each stepsize iterations update learning rate: lr=lr*gamma
-max_iter = 200000 # 600000
+# 68053   // after each stepsize iterations update learning rate: lr=lr*gamma
+stepsize = 136106
+epochs = 6000  # 600../model/keras/model.h5"
 
-weights_best_file = "weights.best.h5"
-training_log = "training.csv"
+weights_best_file = "../model/keras/model.h5"
+training_log = "log_training.csv"
 logs_dir = "./logs"
 
 from_vgg = {
@@ -51,8 +56,11 @@ def get_last_epoch():
 
     :return: epoch number
     """
-    data = pandas.read_csv(training_log)
-    return max(data['epoch'].values)
+    try:
+        data = pandas.read_csv(training_log)
+        return max(data['epoch'].values)
+    except:
+        return 0
 
 
 def restore_weights(weights_best_file, model):
@@ -78,7 +86,8 @@ def restore_weights(weights_best_file, model):
         for layer in model.layers:
             if layer.name in from_vgg:
                 vgg_layer_name = from_vgg[layer.name]
-                layer.set_weights(vgg_model.get_layer(vgg_layer_name).get_weights())
+                layer.set_weights(vgg_model.get_layer(
+                    vgg_layer_name).get_weights())
                 print("Loaded VGG19 layer: " + vgg_layer_name)
 
         return 0
@@ -175,23 +184,29 @@ def gen(df):
 if __name__ == '__main__':
 
     # get the model
-
     model = get_training_model(weight_decay)
 
     # restore weights
-
     last_epoch = restore_weights(weights_best_file, model)
+    if epochs <= last_epoch:
+        print('Parameter epochs:{} is not larger than last_epoch:{}, training finished.'.format(
+            epochs, last_epoch))
+        exit
+    elif last_epoch > 0:
+        print('Continue training from last epoch %d' % last_epoch)
+    else:
+        print('Training from epoch 0')
 
     # prepare generators
 
     curr_dir = os.path.dirname(__file__)
-    annot_path_train = os.path.join(curr_dir, '../dataset/annotations/person_keypoints_train2017.json')
-    img_dir_train = os.path.abspath(os.path.join(curr_dir, '../dataset/train2017/'))
-    annot_path_val = os.path.join(curr_dir, '../dataset/annotations/person_keypoints_val2017.json')
-    img_dir_val = os.path.abspath(os.path.join(curr_dir, '../dataset/val2017/'))
-
+    annot_path_train = os.path.join(curr_dir, '../dataset/didi1210.json')
+    img_dir_train = os.path.abspath(
+        os.path.join(curr_dir, '../dataset/didi1210/'))
+    annot_path_val = os.path.join(curr_dir, '../dataset/didi1210.json')
+    img_dir_val = os.path.abspath(
+        os.path.join(curr_dir, '../dataset/didi1210/'))
     # get dataflow of samples from training set and validation set (we use validation set for training as well)
-
     coco_data_train = COCODataPaths(
         annot_path=annot_path_train,
         img_dir=img_dir_train
@@ -202,9 +217,7 @@ if __name__ == '__main__':
     )
     df = get_dataflow([coco_data_train, coco_data_val])
     train_samples = df.size()
-
     # get generator of batches
-
     batch_df = batch_dataflow(df, batch_size)
     train_gen = gen(batch_df)
 
@@ -213,15 +226,13 @@ if __name__ == '__main__':
     lr_multipliers = get_lr_multipliers(model)
 
     # configure callbacks
-
     iterations_per_epoch = train_samples // batch_size
     _step_decay = partial(step_decay,
-                          iterations_per_epoch=iterations_per_epoch
-                          )
+                          iterations_per_epoch=iterations_per_epoch)
     lrate = LearningRateScheduler(_step_decay)
-    checkpoint = ModelCheckpoint(weights_best_file, monitor='loss',
-                                 verbose=0, save_best_only=False,
-                                 save_weights_only=True, mode='min', period=1)
+    checkpoint = ParallelModelCheckpoint(model, weights_best_file, monitor='loss',
+                                         verbose=0, save_best_only=False,
+                                         save_weights_only=True, mode='min', period=1)
     csv_logger = CSVLogger(training_log, append=True)
     tb = TensorBoard(log_dir=logs_dir, histogram_freq=0, write_graph=True,
                      write_images=False)
@@ -229,17 +240,25 @@ if __name__ == '__main__':
     callbacks_list = [lrate, checkpoint, csv_logger, tb]
 
     # sgd optimizer with lr multipliers
-
     multisgd = MultiSGD(lr=base_lr, momentum=momentum, decay=0.0,
                         nesterov=False, lr_mult=lr_multipliers)
 
     # start training
-
     loss_funcs = get_loss_funcs()
-    model.compile(loss=loss_funcs, optimizer=multisgd, metrics=["accuracy"])
-    model.fit_generator(train_gen,
-                        steps_per_epoch=train_samples // batch_size,
-                        epochs=max_iter,
-                        callbacks=callbacks_list,
-                        use_multiprocessing=False,
-                        initial_epoch=last_epoch)
+    if gpu_count > 1:
+        train_model = multi_gpu_model(model, gpus=gpu_count)
+    else:
+        train_model = model
+    train_model.compile(loss=loss_funcs, optimizer=multisgd,
+                        metrics=["accuracy"])
+    train_model.fit_generator(train_gen,
+                              steps_per_epoch=train_samples // batch_size,
+                              epochs=epochs,
+                              callbacks=callbacks_list,
+                              use_multiprocessing=False,
+                              initial_epoch=last_epoch)
+    weights_save_path = "../model/keras/weight{}.h5".format(
+        datetime.now().strftime('%Y%m%d%H%M%S'))
+    print('Trianing Finish, weights will be copy into ' + weights_save_path)
+    model.save_weights(weights_save_path)
+    print('Weights saved!')

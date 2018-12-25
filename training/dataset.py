@@ -6,36 +6,39 @@ from pycocotools.coco import maskUtils
 
 from tensorpack.dataflow.common import BatchData, MapData
 from tensorpack.dataflow.common import TestDataSpeed
-from tensorpack.dataflow.parallel import PrefetchDataZMQ
+from tensorpack.dataflow.parallel import PrefetchDataZMQ, PrefetchData
 
 from training.augmentors import ScaleAug, RotateAug, CropAug, FlipAug, \
     joints_to_point8, point8_to_joints, AugImgMetadata
 from training.dataflow import CocoDataFlow, JointsLoader, COCODataPaths
 from training.label_maps import create_heatmap, create_paf
 
+HEATMAP_NUM = 18 + 1    # Keypoints count and 1 background
+PAF_NUM = 17 * 2        # Connections count and each has 2 endpoint
 
 ALL_PAF_MASK = np.repeat(
-    np.ones((46, 46, 1), dtype=np.uint8), 38, axis=2)
+    np.ones((46, 46, 1), dtype=np.uint8), PAF_NUM, axis=2)
 
 ALL_HEATMAP_MASK = np.repeat(
-    np.ones((46, 46, 1), dtype=np.uint8), 19, axis=2)
+    np.ones((46, 46, 1), dtype=np.uint8), HEATMAP_NUM, axis=2)
 
 AUGMENTORS_LIST = [
-        ScaleAug(scale_min=0.5,
-                 scale_max=1.1,
-                 target_dist=0.6,
-                 interp=cv2.INTER_CUBIC),
+    ScaleAug(scale_min=0.5,
+             scale_max=1.1,
+             target_dist=0.6,
+             interp=cv2.INTER_CUBIC),
 
-        RotateAug(rotate_max_deg=40,
-                  interp=cv2.INTER_CUBIC,
-                  border=cv2.BORDER_CONSTANT,
-                  border_value=(128, 128, 128), mask_border_val=1),
+    RotateAug(rotate_max_deg=40,
+              interp=cv2.INTER_CUBIC,
+              border=cv2.BORDER_CONSTANT,
+              border_value=(128, 128, 128), mask_border_val=1),
 
-        CropAug(368, 368, center_perterb_max=40, border_value=(128, 128, 128),
-                 mask_border_val=1),
+    CropAug(368, 368, center_perterb_max=40, border_value=(128, 128, 128),
+            mask_border_val=1),
 
-        FlipAug(num_parts=18, prob=0.5),
-    ]
+    # Todo: what does num_parts do?
+    FlipAug(num_parts=18, prob=0.5),
+]
 
 
 def read_img(components):
@@ -94,9 +97,9 @@ def augment(components):
     for aug in AUGMENTORS_LIST:
         (im, mask), params = aug.augment_return_params(
             AugImgMetadata(img=meta.img,
-                            mask=meta.mask,
-                            center=aug_center,
-                            scale=meta.scale))
+                           mask=meta.mask,
+                           center=aug_center,
+                           scale=meta.scale))
 
         # augment joints
         aug_joints = aug.augment_coords(aug_joints, params)
@@ -144,7 +147,8 @@ def create_all_mask(mask, num, stride):
     :return:
     """
     scale_factor = 1.0 / stride
-    small_mask = cv2.resize(mask, (0, 0), fx=scale_factor, fy=scale_factor, interpolation=cv2.INTER_CUBIC)
+    small_mask = cv2.resize(mask, (0, 0), fx=scale_factor,
+                            fy=scale_factor, interpolation=cv2.INTER_CUBIC)
     small_mask = small_mask[:, :, np.newaxis]
     return np.repeat(small_mask, num, axis=2)
 
@@ -163,8 +167,8 @@ def build_sample(components):
         mask_paf = ALL_PAF_MASK
         mask_heatmap = ALL_HEATMAP_MASK
     else:
-        mask_paf = create_all_mask(meta.mask, 38, stride=8)
-        mask_heatmap = create_all_mask(meta.mask, 19, stride=8)
+        mask_paf = create_all_mask(meta.mask, PAF_NUM, stride=8)
+        mask_heatmap = create_all_mask(meta.mask, HEATMAP_NUM, stride=8)
 
     heatmap = create_heatmap(JointsLoader.num_joints_and_bkg, 46, 46,
                              meta.aug_joints, 7.0, stride=8)
@@ -195,7 +199,8 @@ def get_dataflow(coco_data_paths):
     df = MapData(df, augment)
     df = MapData(df, apply_mask)
     df = MapData(df, build_sample)
-    df = PrefetchDataZMQ(df, nr_proc=4) #df = PrefetchData(df, 2, 1)
+    # df = PrefetchDataZMQ(df, nr_proc=4)
+    df = PrefetchData(df, 2, 1)
 
     return df
 
@@ -212,7 +217,7 @@ def batch_dataflow(df, batch_size):
     df = MapData(df, lambda x: (
         [x[0], x[1], x[2]],
         [x[3], x[4], x[3], x[4], x[3], x[4], x[3], x[4], x[3], x[4], x[3], x[4]])
-                 )
+    )
     df.reset_state()
     return df
 
@@ -225,9 +230,11 @@ if __name__ == '__main__':
     """
     batch_size = 10
     curr_dir = os.path.dirname(__file__)
-    annot_path = os.path.join(curr_dir, '../dataset/annotations/person_keypoints_val2017.json')
+    annot_path = os.path.join(
+        curr_dir, '../dataset/annotations/person_keypoints_val2017.json')
     img_dir = os.path.abspath(os.path.join(curr_dir, '../dataset/val2017/'))
-    df = CocoDataFlow((368, 368), COCODataPaths(annot_path, img_dir))#, select_ids=[1000])
+    df = CocoDataFlow((368, 368), COCODataPaths(
+        annot_path, img_dir))  # , select_ids=[1000])
     df.prepare()
     df = MapData(df, read_img)
     df = MapData(df, gen_mask)

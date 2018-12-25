@@ -2,6 +2,7 @@ import numpy as np
 from io import StringIO
 import PIL.Image
 from IPython.display import Image, display
+import sys
 
 def showBGRimage(a, fmt='jpeg'):
     a = np.uint8(np.clip(a, 0, 255))
@@ -75,3 +76,18 @@ def padRightDownCorner(img, stride, padValue):
     img_padded = np.concatenate((img_padded, pad_right), axis=1)
 
     return img_padded, pad
+
+def processBar(num, total, msg='', length=50):
+    rate = num / total
+    rate_num = int(rate * 100)
+    clth = int(rate * length)
+    if len(msg) > 0:
+        msg += ':'
+    if rate_num == 100:
+        r = '\r%s[%s%d%%]\n' % (msg, '*' * length, rate_num,)
+    else:
+        r = '\r%s[%s%s%d%%]' % (msg, '*' * clth, '-' * (length - clth), rate_num,)
+    sys.stdout.write(r)
+    sys.stdout.flush
+    return r.replace('\r', ':')
+

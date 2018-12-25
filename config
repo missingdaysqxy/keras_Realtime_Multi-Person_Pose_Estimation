@@ -1,13 +1,7 @@
 [param]
 
-# CPU mode or GPU mode
-use_gpu = 1
-
-# GPU device number (doesn't matter for CPU mode)
-GPUdeviceNumber = 0
-
 # Select model (default: 1)
-modelID = 1
+modelID = 2
 
 # Look in matlab counterpart for explanation
 octave = 3
@@ -15,8 +9,8 @@ starting_range = 0.8
 ending_range = 2
 scale_search = 0.5, 1, 1.5, 2
 thre1 = 0.1
-thre2 = 0.05 
-thre3 = 0.5 
+thre2 = 0.05
+thre3 = 0.5
 min_num = 4
 mid_num = 10
 crop_ratio = 2.5
@@ -26,11 +20,20 @@ bbox_ratio = 0.25
 ## don't edit this part
 
 [[1]]
-caffemodel = './model/_trained_COCO/pose_iter_440000.caffemodel'
-deployFile = './model/_trained_COCO/pose_deploy.prototxt'
-description = 'COCO Pose56 Two-level Linevec'
+caffemodel = ./model/_trained_COCO/pose_iter_440000.caffemodel
+deployFile = ./model/_trained_COCO/pose_deploy.prototxt
+description = COCO Pose56 Two-level Linevec
 boxsize = 368
 padValue = 128
 np = 12
 stride = 8
-part_str = [nose, neck, Rsho, Relb, Rwri, Lsho, Lelb, Lwri, Rhip, Rkne, Rank, Lhip, Lkne, Lank, Leye, Reye, Lear, Rear, pt19]
+part_str = [nose, neck, Rsho, Relb, Rwri, Lsho, Lelb, Lwri, Rhip, Rkne, Rank, Lhip, Lkne, Lank, Leye, Reye, Lear, Rear]
+
+[[2]]
+description = DiDi Pose
+boxsize = 368
+padValue = 128
+np = 12
+stride = 8
+part_str = left_eye, right_eye, nose, neck, left_chest, right_chest, left_shoulder, left_upperarm, left_elbow, left_forearm, left_wrist, left_hand, right_shoulder, right_upperarm, right_elbow, right_forearm, right_wrist, right_hand
+joint_pairs = "[3, 2]", "[2, 0]", "[2, 1]", "[3, 4]", "[3, 5]", "[3, 6]", "[6, 7]", "[7, 8]", "[8, 9]", "[9, 10]", "[10, 11]", "[3, 12]", "[12, 13]", "[13, 14]", "[14, 15]", "[15, 16]", "[16, 17]"

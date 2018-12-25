@@ -1,6 +1,6 @@
 from configobj import ConfigObj
 import numpy as np
-
+import json
 
 def config_reader():
     config = ConfigObj('config')
@@ -11,10 +11,11 @@ def config_reader():
     model['boxsize'] = int(model['boxsize'])
     model['stride'] = int(model['stride'])
     model['padValue'] = int(model['padValue'])
+    model['joint_pairs'] = [json.loads(x) for x in model['joint_pairs']]
     #param['starting_range'] = float(param['starting_range'])
     #param['ending_range'] = float(param['ending_range'])
     param['octave'] = int(param['octave'])
-    param['use_gpu'] = int(param['use_gpu'])
+    # param['use_gpu'] = int(param['use_gpu'])
     param['starting_range'] = float(param['starting_range'])
     param['ending_range'] = float(param['ending_range'])
     param['scale_search'] = list(map(float, param['scale_search']))
@@ -25,7 +26,7 @@ def config_reader():
     param['min_num'] = int(param['min_num'])
     param['crop_ratio'] = float(param['crop_ratio'])
     param['bbox_ratio'] = float(param['bbox_ratio'])
-    param['GPUdeviceNumber'] = int(param['GPUdeviceNumber'])
+    # param['GPUdeviceNumber'] = int(param['GPUdeviceNumber'])
 
     return param, model
 
