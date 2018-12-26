@@ -220,7 +220,7 @@ def process(input_image, params, model_params):
                     subset = np.vstack([subset, row])
 
     # delete some rows of subset which has few parts occur
-    deleteIdx = [];
+    deleteIdx = []
     for i in range(len(subset)):
         if subset[i][-1] < 4 or subset[i][-2] / subset[i][-1] < 0.4:
             deleteIdx.append(i)
@@ -229,28 +229,30 @@ def process(input_image, params, model_params):
     print('-time to find {} subset: {:.3f}'.format(len(connection_all), time4 - time3))
 
     canvas = cv2.imread(input_image)  # B,G,R order
-    for i in range(num_joints):
-        for j in range(len(all_peaks[i])):
-            cv2.circle(canvas, all_peaks[i][j][0:2], 4, colors[i], thickness=-1)
-
+    # draw connections
     stickwidth = 4
-
     for i in range(num_connections):
         for n in range(len(subset)):
             index = subset[n][np.array(limbSeq[i])]
             if -1 in index:
                 continue
-            cur_canvas = canvas.copy()
+            # cur_canvas = canvas.copy()
             Y = candidate[index.astype(int), 0]
             X = candidate[index.astype(int), 1]
             mX = np.mean(X)
             mY = np.mean(Y)
             length = ((X[0] - X[1]) ** 2 + (Y[0] - Y[1]) ** 2) ** 0.5
             angle = math.degrees(math.atan2(X[0] - X[1], Y[0] - Y[1]))
-            polygon = cv2.ellipse2Poly((int(mY), int(mX)), (int(length / 2), stickwidth), int(angle), 0,
-                                       360, 1)
-            cv2.fillConvexPoly(cur_canvas, polygon, colors[i])
-            canvas = cv2.addWeighted(canvas, 0.4, cur_canvas, 0.6, 0)
+            polygon = cv2.ellipse2Poly((int(mY), int(mX)), (int(length / 2), stickwidth), int(angle), 0, 360, 1)
+            cv2.fillConvexPoly(canvas, polygon, colors[i])
+    # draw keypoints
+    for i in range(num_joints):
+        for peak in all_peaks[i]:
+            cv2.circle(canvas, peak[0:2], 4, colors[i], thickness=-1)
+            cv2.putText(canvas, model_params['part_str'][i], peak[0:2], cv2.FONT_HERSHEY_DUPLEX, 0.3,
+                        [255, 255, 255], thickness=1)
+    # mix
+    canvas = cv2.addWeighted(canvas, 0.6, oriImg, 0.4, 0)
     time5 = time.time()
     print('-time to draw canvas: {:.3f}'.format(time5 - time4))
     return canvas
@@ -260,9 +262,9 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('image', type=str, help='input image')
     parser.add_argument('output', type=str, default='result.png', help='output image')
-    parser.add_argument('--model', type=str, default='model/keras/mymodel.h5',
+    parser.add_argument('-m', '--model', type=str, default='model/keras/mymodel.h5',
                         help='path to the weights file')
-    parser.add_argument('--process_speed', type=int, default=1,
+    parser.add_argument('-p', '--process_speed', type=int, default=1,
                         help='Int 1 (fastest, lowest quality) to 4 (slowest, highest quality)')
 
     args = parser.parse_args()

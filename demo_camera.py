@@ -16,22 +16,22 @@ from model.cmu_model import get_testing_model
 currentDT = time.localtime()
 start_datetime = time.strftime("-%m-%d-%H-%M-%S", currentDT)
 
-# find connection in the specified sequence, center 29 is in the position 15
-limbSeq = [[2, 3], [2, 6], [3, 4], [4, 5], [6, 7], [7, 8], [2, 9], [9, 10], \
-           [10, 11], [2, 12], [12, 13], [13, 14], [2, 1], [1, 15], [15, 17], \
-           [1, 16], [16, 18], [3, 17], [6, 18]]
 
-# the middle joints heatmap correpondence
-mapIdx = [[31, 32], [39, 40], [33, 34], [35, 36], [41, 42], [43, 44], [19, 20], [21, 22], \
-          [23, 24], [25, 26], [27, 28], [29, 30], [47, 48], [49, 50], [53, 54], [51, 52], \
-          [55, 56], [37, 38], [45, 46]]
+# find connection in the specified sequence
+limbSeq = [[3, 2], [2, 0], [2, 1], [3, 4], [3, 5], \
+           [3, 6], [6, 7], [7, 8], [8, 9], [9, 10], [10, 11], \
+           [3, 12], [12, 13], [13, 14], [14, 15], [15, 16], [16, 17]]
+
+# the sort order of mapIdx encodes the map from joint_pairs in training into limbSeq above
+mapIdx = [[0, 1], [2, 3], [4, 5], [6, 7], [8, 9], \
+          [10, 11], [12, 13], [14, 15], [16, 17], [18, 19], [20, 21], \
+          [22, 23], [24, 25], [26, 27], [28, 29], [30, 31], [32, 33]]
 
 # visualize
-colors = [[255, 0, 0], [255, 85, 0], [255, 170, 0], [255, 255, 0], [170, 255, 0], [85, 255, 0],
-          [0, 255, 0], \
-          [0, 255, 85], [0, 255, 170], [0, 255, 255], [0, 170, 255], [0, 85, 255], [0, 0, 255],
-          [85, 0, 255], \
-          [170, 0, 255], [255, 0, 255], [255, 0, 170], [255, 0, 85]]
+colors = [[255, 0, 0], [255, 85, 0], [255, 170, 0], [255, 255, 0], [170, 255, 0], [85, 255, 0], \
+          [0, 255, 0], [0, 255, 85], [0, 255, 170], [0, 255, 255], [0, 170, 255], [0, 85, 255], \
+          [0, 0, 255], [85, 0, 255], [170, 0, 255], [255, 0, 255], [255, 0, 170], [255, 0, 85]]
+
 
 
 def process (input_image, params, model_params):
@@ -43,7 +43,6 @@ def process (input_image, params, model_params):
 
     #width = oriImg.shape[1]
     #height = oriImg.shape[0]
-    factor = 0.3
 
     #oriImg = oriImg[int(height*factor):int(height*(1-factor))]
     #oriImg = cv2.resize(oriImg, (0, 0), fx=1/4, fy=1/4, interpolation=cv2.INTER_CUBIC)
@@ -56,8 +55,8 @@ def process (input_image, params, model_params):
     multiplier = [x * model_params['boxsize'] / oriImg.shape[1] for x in scale_search]
 
 
-    heatmap_avg = np.zeros((oriImg.shape[0], oriImg.shape[1], 19))
-    paf_avg = np.zeros((oriImg.shape[0], oriImg.shape[1], 38))
+    heatmap_avg = np.zeros((oriImg.shape[0], oriImg.shape[1], num_joints_and_bkg))
+    paf_avg = np.zeros((oriImg.shape[0], oriImg.shape[1], num_paf))
 
     for m in range(len(multiplier)):
         scale = multiplier[m]
@@ -94,7 +93,7 @@ def process (input_image, params, model_params):
     all_peaks = []
     peak_counter = 0
 
-    for part in range(18):
+    for part in range(num_joints):
         map_ori = heatmap_avg[:, :, part]
         map = gaussian_filter(map_ori, sigma=3)
 
@@ -121,10 +120,10 @@ def process (input_image, params, model_params):
     special_k = []
     mid_num = 10
 
-    for k in range(len(mapIdx)):
-        score_mid = paf_avg[:, :, [x - 19 for x in mapIdx[k]]]
-        candA = all_peaks[limbSeq[k][0] - 1]
-        candB = all_peaks[limbSeq[k][1] - 1]
+    for k in range(num_connections):
+        score_mid = paf_avg[:, :, [x for x in mapIdx[k]]]
+        candA = all_peaks[limbSeq[k][0]]
+        candB = all_peaks[limbSeq[k][1]]
         nA = len(candA)
         nB = len(candB)
         indexA, indexB = limbSeq[k]
@@ -178,11 +177,11 @@ def process (input_image, params, model_params):
     subset = -1 * np.ones((0, 20))
     candidate = np.array([item for sublist in all_peaks for item in sublist])
 
-    for k in range(len(mapIdx)):
+    for k in range(num_connections):
         if k not in special_k:
             partAs = connection_all[k][:, 0]
             partBs = connection_all[k][:, 1]
-            indexA, indexB = np.array(limbSeq[k]) - 1
+            indexA, indexB = limbSeq[k]
 
             for i in range(len(connection_all[k])):  # = 1:size(temp,1)
                 found = 0
@@ -236,7 +235,7 @@ def process (input_image, params, model_params):
     #subset *= resize_fac
     #print(all_peaks)
 
-    for i in range(18):
+    for i in range(num_joints):
         for j in range(len(all_peaks[i])):
             #all_peaks[i][j] *= resize_fac
             a = all_peaks[i][j][0] * resize_fac
@@ -245,10 +244,8 @@ def process (input_image, params, model_params):
             cv2.circle(canvas, (a,b), 2, colors[i], thickness=-1)
 
     stickwidth = 4
-
     #print(subset)
-
-    for i in range(17):
+    for i in range(num_connections):
         for n in range(len(subset)):
             index = subset[n][np.array(limbSeq[i]) - 1]
             if -1 in index:
@@ -273,7 +270,7 @@ def process (input_image, params, model_params):
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     #parser.add_argument('--video', type=str, required=True, help='input video file name')
-    parser.add_argument('--model', type=str, default='model/keras/model.h5', help='path to the weights file')
+    parser.add_argument('--model', type=str, default='model/keras/mymodel.h5', help='path to the weights file')
     parser.add_argument('--frame_ratio', type=int, default=7, help='analyze every [n] frames')
     # --process_speed changes at how many times the model analyzes each frame at a different scale
     parser.add_argument('--process_speed', type=int, default=1, help='Int 1 (fastest, lowest quality) to 4 (slowest, highest quality)')
@@ -302,13 +299,21 @@ if __name__ == '__main__':
     video_output = output_path + video + str(start_datetime) + output_format
 
     # load model
-    # authors of original model don't use
-    # vgg normalization (subtracting mean) on input images
+    print('[*]Loading model...')
     model = get_testing_model()
     model.load_weights(keras_weights_file)
 
     # load config
+    print('[*]Loading config...')
     params, model_params = config_reader()
+    scale_search = params['scale_search']  # [0.5, 1, 1.5, 2]
+    scale_search = scale_search[0:process_speed]
+    num_joints = len(model_params['part_str'])  # 18
+    num_joints_and_bkg = num_joints + 1  # 19
+    num_connections = len(model_params['joint_pairs'])  # 17
+    num_paf = 2 * num_connections  # 34
+
+    assert num_connections == len(limbSeq) and num_connections == len(mapIdx)
 
     # Video reader
     #cam = cv2.VideoCapture(input_video)
@@ -343,7 +348,7 @@ if __name__ == '__main__':
 
             width = orig_image.shape[1]
             height = orig_image.shape[0]
-            factor = 0.3
+            factor = 0.0
 
             cropped = orig_image[:,int(width*factor):int(width*(1-factor))]
             # generate image with body parts
