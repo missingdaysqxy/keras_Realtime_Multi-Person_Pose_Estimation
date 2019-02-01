@@ -43,9 +43,7 @@ def process(input_image, params, model_params):
         imageToTest = cv2.resize(oriImg, (0, 0), fx=scale, fy=scale, interpolation=cv2.INTER_CUBIC)
         imageToTest_padded, pad = util.padRightDownCorner(imageToTest, model_params['stride'],
                                                           model_params['padValue'])
-
-        input_img = np.transpose(np.float32(imageToTest_padded[:, :, :, np.newaxis]),
-                                 (3, 0, 1, 2))  # required shape (1, width, height, channels)
+        input_img = np.float32(imageToTest_padded[np.newaxis,:, :, :])  # required shape (1, width, height, channels)
 
         output_blobs = model.predict(input_img)
 
@@ -229,10 +227,12 @@ def process(input_image, params, model_params):
     print('-time to find {} subset: {:.3f}'.format(len(connection_all), time4 - time3))
 
     canvas = cv2.imread(input_image)  # B,G,R order
+    instances=[]
     # draw connections
     stickwidth = 4
-    for i in range(num_connections):
-        for n in range(len(subset)):
+    for n in range(len(subset)):
+        instance={'keypoints':[],'skeletons':[]}
+        for i in range(num_connections):
             index = subset[n][np.array(limbSeq[i])]
             if -1 in index:
                 continue
@@ -260,16 +260,41 @@ def process(input_image, params, model_params):
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
-    parser.add_argument('image', type=str, help='input image')
-    parser.add_argument('output', type=str, default='result.png', help='output image')
+    parser.add_argument('input', type=str, help='input image, file or directory')
+    parser.add_argument('output', type=str, help='output image, file or directory')
     parser.add_argument('-m', '--model', type=str, default='model/keras/mymodel.h5',
                         help='path to the weights file')
     parser.add_argument('-p', '--process_speed', type=int, default=1,
                         help='Int 1 (fastest, lowest quality) to 4 (slowest, highest quality)')
 
     args = parser.parse_args()
-    input_image = args.image
+    input = args.input
     output = args.output
+    start_datetime = time.strftime("-%m%d%H%M%S", time.localtime())
+
+    if not os.path.exists(input):
+        raise FileNotFoundError("File not exist in {}".format(input))
+    image_files = {"input": [], "output": []}
+    output_format = '.jpg'
+    if os.path.isdir(input) and os.path.isdir(output):
+        for root, dirs, files in os.walk(input):
+            rel_path = os.path.relpath(root, input)
+            for file in files:
+                name, ext = os.path.splitext(file)
+                if ext in ['.jpg', '.bmp', '.png', '.gif', '.rgb']:
+                    input_path = os.path.join(root, file)
+                    output_path = os.path.join(output, rel_path, name + start_datetime + output_format)
+                    os.makedirs(os.path.dirname(output_path), exist_ok=True)
+                    image_files["input"].append(input_path)
+                    image_files["output"].append(output_path)
+    elif os.path.isfile(input) and os.path.isfile(output):
+        name, ext = os.path.splitext(input)
+        assert ext in ['.jpg', '.bmp', '.png', '.gif', '.rgb']
+        os.makedirs(os.path.dirname(output), exist_ok=True)
+        image_files["input"].append(input)
+        image_files["output"].append(output)
+    else:
+        raise RuntimeError("input and output must be both files or directories")
     keras_weights_file = args.model
     process_speed = args.process_speed
 
@@ -296,13 +321,15 @@ if __name__ == '__main__':
 
     assert num_connections == len(limbSeq) and num_connections == len(mapIdx)
 
-    # generate image with body parts
-    canvas = process(input_image, params, model_params)
+    for input, output in zip(image_files["input"], image_files["output"]):
+        print('[*]Process image {} into {}'.format(input, output))
+        # generate image with body parts
+        canvas = process(input, params, model_params)
 
-    toc = time.time()
-    print('processing time is %.5f' % (toc - tic))
+        toc = time.time()
+        print('processing time is %.5f' % (toc - tic))
 
-    cv2.imwrite(output, canvas)
-    cv2.imshow(input_image, canvas)
-    cv2.waitKey()
+        cv2.imwrite(output, canvas)
+        cv2.imshow("view", canvas)
+        cv2.waitKey(1)
     cv2.destroyAllWindows()

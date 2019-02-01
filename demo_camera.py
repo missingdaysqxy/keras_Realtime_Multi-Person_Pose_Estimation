@@ -37,7 +37,7 @@ colors = [[255, 0, 0], [255, 85, 0], [255, 170, 0], [255, 255, 0], [170, 255, 0]
 def process (input_image, params, model_params):
 
     #fx=0.5, fy=0.5
-    #oriImg = cv2.imread(input_image)  # B,G,R order
+    #oriImg = cv2.imread(input)  # B,G,R order
     oriImg = cv2.cvtColor(input_image, cv2.COLOR_RGB2BGR)
     print("orig", oriImg.shape)
 
@@ -67,7 +67,7 @@ def process (input_image, params, model_params):
 
         input_img = np.transpose(np.float32(imageToTest_padded[:,:,:,np.newaxis]), (3,0,1,2)) # required shape (1, width, height, channels)
 
-        #input_img = np.transpose(np.float32(imageToTest_padded[:,:,:,np.newaxis]), (3,1,0,2)) # required shape (1, width, height, channels)
+        #batch_img = np.transpose(np.float32(img_pad[:,:,:,np.newaxis]), (3,1,0,2)) # required shape (1, width, height, channels)
 
         print(input_img.shape)
 
@@ -227,7 +227,7 @@ def process (input_image, params, model_params):
             deleteIdx.append(i)
     subset = np.delete(subset, deleteIdx, axis=0)
 
-    #canvas = cv2.imread(input_image)  # B,G,R order
+    #canvas = cv2.imread(input)  # B,G,R order
     canvas = cropped
 
 
@@ -278,7 +278,7 @@ if __name__ == '__main__':
     parser.add_argument('--end', type=int, default=None, help='Last video frame to analyze')
 
     args = parser.parse_args()
-    #input_image = args.image
+    #input = args.image
     #output = args.output
     keras_weights_file = args.model
     frame_rate_ratio = args.frame_ratio
@@ -316,7 +316,7 @@ if __name__ == '__main__':
     assert num_connections == len(limbSeq) and num_connections == len(mapIdx)
 
     # Video reader
-    #cam = cv2.VideoCapture(input_video)
+    #cam = cv2.VideoCapture(input)
     cam = cv2.VideoCapture(0)
     #CV_CAP_PROP_FPS
     #cam.set(cv2.CAP_PROP_FPS, 10)
@@ -332,7 +332,7 @@ if __name__ == '__main__':
     # Video writer
     output_fps = input_fps / frame_rate_ratio
     #fourcc = cv2.VideoWriter_fourcc(*'mp4v')
-    #out = cv2.VideoWriter(video_output,fourcc, output_fps, (input_image.shape[1], input_image.shape[0]))
+    #out = cv2.VideoWriter(video_output,fourcc, output_fps, (input.shape[1], input.shape[0]))
 
     i = 0 # default is 0
     resize_fac = 8
@@ -367,9 +367,9 @@ if __name__ == '__main__':
             if cv2.waitKey(1) & 0xFF == ord('q'):
                 break
         #elif i % 3 == 0:
-            #cv2.imshow('frame',input_image)
+            #cv2.imshow('frame',input)
             #if cv2.waitKey(1) & 0xFF == ord('q'):
                 #break
-        #ret_val, input_image = cam.read()
+        #ret_val, input = cam.read()
 
         i += 1

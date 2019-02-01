@@ -212,7 +212,6 @@ def process(input_image, params, model_params):
             index = subset[n][limbSeq[i]]
             if -1 in index:
                 continue
-            # cur_canvas = canvas.copy()
             Y = candidate[index.astype(int), 0]
             X = candidate[index.astype(int), 1]
             mX = np.mean(X)
@@ -265,11 +264,9 @@ if __name__ == '__main__':
     # Video input & output
     video = args.video
     if not os.path.exists(video):
-        video = os.path.join('videos/', video)
-        if not os.path.exists(video):
-            raise FileNotFoundError("File not exist in neither {} and {}".format(args.video, video))
+        raise FileNotFoundError("File not exist in {}".format(video))
     video_files = {"input": [], "output": []}
-    output_dir = 'videos/output'
+    output_dir = 'outputs/video'
     output_format = '.mp4'
     if os.path.isdir(video):
         for root, dirs, files in os.walk(video):
@@ -336,7 +333,7 @@ if __name__ == '__main__':
                 resized_image = cv2.resize(input_image, (0, 0), fx=1 * resize_fac, fy=1 * resize_fac,
                                            interpolation=cv2.INTER_CUBIC)
                 ret, canvas = process(resized_image, params, model_params)
-                if not ret:
+                if not ret: # no completion people
                     save_path = os.path.join(dataset_save_dir,
                                              'id{}_{}_frame{}.jpg'.format(dsidx, os.path.split(output_video)[1], i))
                     save_path_view = os.path.join(
